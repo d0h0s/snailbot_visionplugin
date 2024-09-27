@@ -1,0 +1,5 @@
+<library path="lib/libaruco_pose_nodelet">
+    <class name="aruco_pose/ArucoPoseNodelet" type="aruco_pose::ArucoPoseNodelet" base_class_type="nodelet::Nodelet">
+        <description>ArucoPoseNodelet</description>
+    </class>
+</library>

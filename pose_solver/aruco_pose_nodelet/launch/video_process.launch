@@ -1,0 +1,28 @@
+<launch>
+    <node pkg="nodelet" type="nodelet" name="video_manager" args="manager" output="screen"/>
+
+    <!-- Ô¤´¦Àí nodelet -->
+    <node pkg="nodelet" type="nodelet" name="image_preprocessing" args="load aruco_image_preprocessing/ArucoImagePreprocessingNodelet /video_manager --no-bond" output="screen">
+        <param name="image_topic" value="/camera/rgb/image_raw"/>
+        <param name="alpha" value="1.5"/>
+        <param name="median_blur_size" value="3"/>
+        <param name="block_size" value="15"/>
+        <param name="C" value="3"/>
+
+    </node>
+
+    <rosparam command="load" file="$(find aruco_pose_nodelet)/param/ff_ost.yaml" />
+    <rosparam command="load" file="$(find aruco_pose_nodelet)/param/aruco_poses.yaml" />
+    <node name="static_tf" pkg="tf" type="static_transform_publisher" args="0 0 0 1.5707 3.1415 1.5707  /camera /camera_rgb_frame 100" />
+    <!-- blue ,green,red   pitch,yawz,raw    -->
+    <node pkg="nodelet" type="nodelet" name="aruco_detection"
+          args="load aruco_pose/ArucoPoseNodelet /video_manager --no-bond" output="screen">
+<!--        <param name="image_topic" value="/camera/rgb/image_preprocessed"/>-->
+        <param name="image_topic" value="/camera/rgb/image_raw"/>
+        <param name="real_marker_width" value="25.0"/>
+        <param name="alpha" value="0.75"/>
+        <param name="robot_radius" value="60.0"/>
+    </node>
+
+
+</launch>

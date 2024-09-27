@@ -1,0 +1,5 @@
+<library path="lib/libaruco_image_preprocessing_nodelet">
+    <class name="aruco_image_preprocessing/ArucoImagePreprocessingNodelet" type="aruco_image_preprocessing::ArucoImagePreprocessingNodelet" base_class_type="nodelet::Nodelet">
+        <description>Aruco Image Preprocessing Nodelet</description>
+    </class>
+</library>
