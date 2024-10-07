@@ -12,18 +12,18 @@ ArucoPoseNodelet::~ArucoPoseNodelet() {}
 void ArucoPoseNodelet::onInit() {
   ros::NodeHandle& nh = getNodeHandle();
   ros::NodeHandle& nh_private = getPrivateNodeHandle();
-
+  ros::NodeHandle aruco_poses_nh(nh, "aruco_poses");
   // 从参数服务器中获取相机参数
   loadCameraParams(nh);
+  nh_private.getParam("robot_name", robot_name_);
   XmlRpc::XmlRpcValue aruco_poses_list;
-  nh.getParam("aruco_poses", aruco_poses_list);
+  aruco_poses_nh.getParam(robot_name_, aruco_poses_list);
   getArucoPosesList(aruco_poses_list);
   std::string image_topic;
   nh_private.param("image_topic", image_topic, std::string("/camera/rgb/image_raw"));
   nh_private.param("real_marker_width", real_marker_width_, 16.0);
   nh_private.param("alpha", alpha_, 0.8);
   nh_private.param("robot_radius", robot_radius_, 60.0);
-
   image_sub_ = nh.subscribe(image_topic, 10, &ArucoPoseNodelet::imageCallback, this);
 
   // 发布带标记的图像和marker
@@ -43,7 +43,7 @@ void ArucoPoseNodelet::getArucoPosesList(const XmlRpc::XmlRpcValue& aruco_poses_
     geometry_msgs::TransformStamped pose;
     pose.transform.translation = tf2::toMsg(tf2::Vector3(aruco_pose.second["translation"][0], aruco_pose.second["translation"][1], aruco_pose.second["translation"][2]));
     pose.transform.rotation = tf2::toMsg(tf2::Quaternion(aruco_pose.second["rotation"][0], aruco_pose.second["rotation"][1], aruco_pose.second["rotation"][2], aruco_pose.second["rotation"][3]));
-    pose.header.frame_id = "sphere_center";
+    pose.header.frame_id = robot_name_;
     pose.child_frame_id = "target_" + std::to_string(static_cast<int>(aruco_pose.second["id"]));
     aruco_poses_list_.insert(std::make_pair(aruco_pose.second["id"], pose));
   }
@@ -83,15 +83,15 @@ void ArucoPoseNodelet::imageCallback(const sensor_msgs::ImageConstPtr &msg)
       std::vector<cv::Vec3d> rvecs, tvecs;
       cv::aruco::estimatePoseSingleMarkers(smoothed_corners_all, (float)real_marker_width_, camera_matrix_, dist_coeffs_, rvecs, tvecs);
 
-      std::vector<geometry_msgs::Point> points_in_camera_frame;
+      std::vector<geometry_msgs::TransformStamped> sphere_transforms;
       for (size_t i = 0; i < ids.size(); i++)
-        processMarkerPose(ids[i], rvecs[i], tvecs[i], points_in_camera_frame, image, smoothed_corners_all[i]);
+        processMarkerPose(ids[i], rvecs[i], tvecs[i], sphere_transforms, image, smoothed_corners_all[i]);
 
-      // 计算并发布球心的位置
-      if (!points_in_camera_frame.empty())
-        publishSphereCenter(points_in_camera_frame, image);
-
+      // 计算并发布球心的位姿
+      if (!sphere_transforms.empty())
+        publishSphereCenter(sphere_transforms, image);
     }
+
     // 发布带标记的调试图像
     publishDebugImage(msg->header, image);
   } catch (const cv::Exception &e){
@@ -140,25 +140,42 @@ std::vector<cv::Point2f> ArucoPoseNodelet::smoothMarkerCorners(int marker_id, co
 
 // 处理每个标记的姿态并发布TF
 void ArucoPoseNodelet::processMarkerPose(int marker_id, const cv::Vec3d& rvec, const cv::Vec3d& tvec,
-                                         std::vector<geometry_msgs::Point>& points_in_camera_frame,
+                                         std::vector<geometry_msgs::TransformStamped>& sphere_transforms,
                                          cv::Mat& image, const std::vector<cv::Point2f>& smoothed_corners)
 {
-  geometry_msgs::TransformStamped transformStamped;
-  if (!convertPoseToTransform(marker_id, rvec, tvec, transformStamped)) return;
-
-  br_.sendTransform(transformStamped);
+  geometry_msgs::TransformStamped aruco_transform;
+  if (!convertPoseToTransform(marker_id, rvec, tvec, aruco_transform)) return;
+  br_.sendTransform(aruco_transform);
+  // 绘制Aruco标记框
   drawImage(rvec, tvec, image, marker_id, smoothed_corners);
+  // 从参数服务器中获取 center2target（Aruco 码相对于球心的变换）
+  auto it = aruco_poses_list_.find(marker_id);
+  if (it == aruco_poses_list_.end()) {
+    ROS_WARN("No center2target pose found for marker ID %d", marker_id);
+    return;
+  }
 
-  // 将球心坐标转换到相机坐标系
-  geometry_msgs::PointStamped marker_point, point_in_camera_frame;
-  marker_point.point.x = 0.0;
-  marker_point.point.y = 0.0;
-  marker_point.point.z = -robot_radius_ / 1000.0;  // mm 转换为 m
-  marker_point.header.frame_id = transformStamped.child_frame_id;
+  // 获取 center2target (Aruco 码相对于球心的位姿)
+  geometry_msgs::TransformStamped center2target = it->second;
+
+  // 将 center2target 转换为 target2center (球心相对于Aruco 码的位姿，求逆变换)
+  geometry_msgs::TransformStamped target2center;
+  tf2::Transform center2target_tf;
+  tf2::fromMsg(center2target.transform, center2target_tf);
+  tf2::Transform target2center_tf = center2target_tf.inverse();
+
+  // 将逆变换结果存储回 target2center
+  target2center.transform = tf2::toMsg(target2center_tf);
+  target2center.header.frame_id = aruco_transform.child_frame_id;
+  target2center.child_frame_id = robot_name_;
+  // 将球心的位姿从Aruco码坐标系转换到相机坐标系
+  geometry_msgs::TransformStamped center_in_camera;
+  center_in_camera.header.frame_id = "camera_rgb_frame";
+  center_in_camera.child_frame_id = robot_name_;
 
   try {
-    tf2::doTransform(marker_point, point_in_camera_frame, transformStamped);
-    points_in_camera_frame.push_back(point_in_camera_frame.point);
+    tf2::doTransform(target2center, center_in_camera, aruco_transform);
+    sphere_transforms.push_back(center_in_camera);
   } catch (tf2::TransformException &ex) {
     ROS_WARN("Transformation failed: %s", ex.what());
   }
@@ -192,24 +209,17 @@ bool ArucoPoseNodelet::convertPoseToTransform(int marker_id, const cv::Vec3d& rv
 }
 
 // 发布球心的TF和2D投影
-void ArucoPoseNodelet::publishSphereCenter(const std::vector<geometry_msgs::Point>& points_in_camera_frame, cv::Mat& image)
+void ArucoPoseNodelet::publishSphereCenter(const std::vector<geometry_msgs::TransformStamped>& sphere_transforms, cv::Mat& image)
 {
-  geometry_msgs::Point average_point = computeAveragePoint(points_in_camera_frame);
-  publishSphereSTL(average_point);
-  // 发布球心TF
-  geometry_msgs::TransformStamped sphere_center_transform;
-  sphere_center_transform.header.stamp = ros::Time::now();
-  sphere_center_transform.header.frame_id = "camera_rgb_frame";
-  sphere_center_transform.child_frame_id = "sphere_center";
-  sphere_center_transform.transform.translation.x = average_point.x;
-  sphere_center_transform.transform.translation.y = average_point.y;
-  sphere_center_transform.transform.translation.z = average_point.z;
-  sphere_center_transform.transform.rotation.w = 1.0;  // 单位四元数
-  br_.sendTransform(sphere_center_transform);
-
+  // 平均每个标记的平移和旋转
+  geometry_msgs::TransformStamped avg_transform = computeAverageTransform(sphere_transforms);
+  br_.sendTransform(avg_transform);
+  publishSphereSTL(avg_transform);
   // 在图像上绘制球心
   std::vector<cv::Point2f> projected_point;
-  cv::projectPoints(std::vector<cv::Point3f>{cv::Point3f(average_point.x, average_point.y, average_point.z)},
+  cv::projectPoints(std::vector<cv::Point3f>{cv::Point3f(avg_transform.transform.translation.x,
+                                                         avg_transform.transform.translation.y,
+                                                         avg_transform.transform.translation.z)},
                     cv::Mat::zeros(3, 1, CV_64F),  // 旋转向量
                     cv::Mat::zeros(3, 1, CV_64F),  // 平移向量
                     camera_matrix_, dist_coeffs_, projected_point);
@@ -220,28 +230,68 @@ void ArucoPoseNodelet::publishSphereCenter(const std::vector<geometry_msgs::Poin
   }
 }
 
-void ArucoPoseNodelet::publishSphereSTL(const geometry_msgs::Point& sphere_center)
+// 计算位姿的平均值
+geometry_msgs::TransformStamped ArucoPoseNodelet::computeAverageTransform(const std::vector<geometry_msgs::TransformStamped>& transforms)
+{
+  geometry_msgs::TransformStamped avg_transform;
+  avg_transform.transform.translation.x = 0.0;
+  avg_transform.transform.translation.y = 0.0;
+  avg_transform.transform.translation.z = 0.0;
+  avg_transform.header.stamp = ros::Time::now();
+  avg_transform.header.frame_id = "camera_rgb_frame";
+  avg_transform.child_frame_id = robot_name_;
+  for (const auto& transform : transforms)
+  {
+    avg_transform.transform.translation.x += transform.transform.translation.x;
+    avg_transform.transform.translation.y += transform.transform.translation.y;
+    avg_transform.transform.translation.z += transform.transform.translation.z;
+  }
+
+  size_t count = transforms.size();
+  avg_transform.transform.translation.x /= count;
+  avg_transform.transform.translation.y /= count;
+  avg_transform.transform.translation.z /= count;
+
+  // 计算姿态部分的平均值（四元数）
+  tf2::Quaternion avg_quaternion(0, 0, 0, 0);  // 初始化累加器为零四元数
+  for (const auto& transform : transforms) {
+    tf2::Quaternion q(
+        transform.transform.rotation.x,
+        transform.transform.rotation.y,
+        transform.transform.rotation.z,
+        transform.transform.rotation.w);
+    avg_quaternion += q;  // 对四元数进行累加
+  }
+  avg_quaternion = avg_quaternion * (1.0 / transforms.size());
+  avg_quaternion.normalize();  // 归一化，确保结果为单位四元数
+
+  avg_transform.transform.rotation.x = avg_quaternion.x();
+  avg_transform.transform.rotation.y = avg_quaternion.y();
+  avg_transform.transform.rotation.z = avg_quaternion.z();
+  avg_transform.transform.rotation.w = avg_quaternion.w();
+
+  return avg_transform;
+}
+
+// 发布球心的STL文件并显示其姿态
+void ArucoPoseNodelet::publishSphereSTL(const geometry_msgs::TransformStamped& sphere_center_transform)
 {
   visualization_msgs::Marker marker;
-  marker.header.frame_id = "camera_rgb_frame";
+  marker.ns = robot_name_;
+  marker.header.frame_id = sphere_center_transform.header.frame_id;
   marker.header.stamp = ros::Time::now();
 
   // 定义Marker类型为MESH_RESOURCE，用于加载STL文件
   marker.type = visualization_msgs::Marker::MESH_RESOURCE;
   marker.action = visualization_msgs::Marker::ADD;
 
-  // 设置球体的位置
-  marker.pose.position.x = sphere_center.x;
-  marker.pose.position.y = sphere_center.y;
-  marker.pose.position.z = sphere_center.z;
+  // 设置球体的位置和姿态
+  marker.pose.position.x = sphere_center_transform.transform.translation.x;
+  marker.pose.position.y = sphere_center_transform.transform.translation.y;
+  marker.pose.position.z = sphere_center_transform.transform.translation.z;
+  marker.pose.orientation = sphere_center_transform.transform.rotation;
 
-  // 设置旋转，单位四元数
-  marker.pose.orientation.x = 0.0;
-  marker.pose.orientation.y = 0.0;
-  marker.pose.orientation.z = 0.0;
-  marker.pose.orientation.w = 1.0;
-
-  // 设置球体的尺寸（缩放比例），可以根据需要调整
+  // 设置球体的尺寸（缩放比例）
   marker.scale.x = 0.001; // 根据半径设置缩放
   marker.scale.y = 0.001;
   marker.scale.z = 0.001;
@@ -252,30 +302,11 @@ void ArucoPoseNodelet::publishSphereSTL(const geometry_msgs::Point& sphere_cente
   marker.color.b = 0.0;
   marker.color.a = 1.0; // 不透明
 
-  // 设置STL文件路径（可以是官方资源）
+  // 设置STL文件路径
   marker.mesh_resource = "package://aruco_pose_nodelet/meshes/MODEL3.STL";
-
+  marker.lifetime = ros::Duration(0.0);
   // 发布Marker
   marker_pub_.publish(marker);
-}
-
-// 计算球心的平均位置
-geometry_msgs::Point ArucoPoseNodelet::computeAveragePoint(const std::vector<geometry_msgs::Point>& points)
-{
-  geometry_msgs::Point avg_point;
-  avg_point.x = avg_point.y = avg_point.z = 0.0;
-
-  for (const auto& point : points)
-  {
-    avg_point.x += point.x;
-    avg_point.y += point.y;
-    avg_point.z += point.z;
-  }
-  size_t count = points.size();
-  avg_point.x /= count;
-  avg_point.y /= count;
-  avg_point.z /= count;
-  return avg_point;
 }
 
 // 发布调试图像
@@ -295,7 +326,7 @@ void ArucoPoseNodelet::drawImage(cv::Vec3d rvec, cv::Vec3d tvec, cv::Mat image, 
     cv::line(image, corner[j], corner[(j + 1) % 4], cv::Scalar(0, 255, 0), 2);
     cv::circle(image, corner[j], 4, cv::Scalar(0, 0, 255), -1);
   }
-  // 使用 projectPoints 将姿态轴投影到图像上s
+  // 使用 projectPoints 将姿态轴投影到图像上
   std::vector<cv::Point2f> projected_points;
   std::vector<cv::Point3f> axis_points;
   float axis_length = 30.0;  // 增大到 0.3 米

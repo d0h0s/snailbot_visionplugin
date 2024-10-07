@@ -42,11 +42,11 @@ private:
   void loadCameraParams(ros::NodeHandle& nh);
   std::vector<std::vector<cv::Point2f>> detectAndSmoothMarkers(cv::Mat& image, std::vector<int>& ids);
   std::vector<cv::Point2f> smoothMarkerCorners(int marker_id, const std::vector<cv::Point2f>& corners);
-  void processMarkerPose(int marker_id, const cv::Vec3d& rvec, const cv::Vec3d& tvec, std::vector<geometry_msgs::Point>& points_in_camera_frame, cv::Mat& image, const std::vector<cv::Point2f>& smoothed_corners);
+  void processMarkerPose(int marker_id, const cv::Vec3d& rvec, const cv::Vec3d& tvec, std::vector<geometry_msgs::TransformStamped>& sphere_transforms, cv::Mat& image, const std::vector<cv::Point2f>& smoothed_corners);
   bool convertPoseToTransform(int marker_id, const cv::Vec3d& rvec, const cv::Vec3d& tvec, geometry_msgs::TransformStamped& transformStamped);
-  void publishSphereCenter(const std::vector<geometry_msgs::Point>& points_in_camera_frame, cv::Mat& image);
-  void publishSphereSTL(const geometry_msgs::Point& sphere_center);
-  geometry_msgs::Point computeAveragePoint(const std::vector<geometry_msgs::Point>& points);
+  void publishSphereCenter(const std::vector<geometry_msgs::TransformStamped>& sphere_transforms, cv::Mat& image);
+  void publishSphereSTL(const geometry_msgs::TransformStamped& sphere_center_transform);
+  geometry_msgs::TransformStamped computeAverageTransform(const std::vector<geometry_msgs::TransformStamped>& transforms);
   void publishDebugImage(const std_msgs::Header& header, const cv::Mat& image);
   void getArucoPosesList(const XmlRpc::XmlRpcValue& aruco_poses_list);
 
@@ -55,6 +55,7 @@ private:
   tf2_ros::TransformBroadcaster br_;
   cv::Mat camera_matrix_, dist_coeffs_;
   double real_marker_width_ = 0., alpha_ = 0., robot_radius_ = 0.;
+  std::string robot_name_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener;
   std::map<int, std::vector<class WeightedAverageFilter2D>> marker_filters;

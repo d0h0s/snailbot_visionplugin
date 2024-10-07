@@ -15,8 +15,9 @@
     <rosparam command="load" file="$(find aruco_pose_nodelet)/param/aruco_poses.yaml" />
     <node name="static_tf" pkg="tf" type="static_transform_publisher" args="0 0 0 1.5707 3.1415 1.5707  /camera /camera_rgb_frame 100" />
     <!-- blue ,green,red   pitch,yawz,raw    -->
-    <node pkg="nodelet" type="nodelet" name="aruco_detection"
+    <node pkg="nodelet" type="nodelet" name="aruco_detection_1"
           args="load aruco_pose/ArucoPoseNodelet /video_manager --no-bond" output="screen">
+        <param name="robot_name" value="robot_1"/>
 <!--        <param name="image_topic" value="/camera/rgb/image_preprocessed"/>-->
         <param name="image_topic" value="/camera/rgb/image_raw"/>
         <param name="real_marker_width" value="25.0"/>
@@ -24,5 +25,14 @@
         <param name="robot_radius" value="60.0"/>
     </node>
 
+    <node pkg="nodelet" type="nodelet" name="aruco_detection_2"
+          args="load aruco_pose/ArucoPoseNodelet /video_manager --no-bond" output="screen">
+        <param name="robot_name" value="robot_2"/>
+        <!--        <param name="image_topic" value="/camera/rgb/image_preprocessed"/>-->
+        <param name="image_topic" value="/camera/rgb/image_raw"/>
+        <param name="real_marker_width" value="25.0"/>
+        <param name="alpha" value="0.75"/>
+        <param name="robot_radius" value="60.0"/>
+    </node>
 
 </launch>
