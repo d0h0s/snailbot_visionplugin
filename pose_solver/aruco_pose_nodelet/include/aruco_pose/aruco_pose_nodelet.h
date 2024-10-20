@@ -24,6 +24,8 @@
 #include <map>
 #include <vector>
 #include <unordered_map>
+#include <actionlib/client/simple_action_client.h>
+#include <snailbot_msgs/ConnectedRelationAction.h>
 
 namespace aruco_pose {
 
@@ -33,7 +35,7 @@ public:
   ~ArucoPoseNodelet() override;
 
   void onInit() override;
-
+  void sendGoal(int robot_id, int robots_num);  // 发送目标
 private:
   void imageCallback(const sensor_msgs::ImageConstPtr &msg);
   void drawImage(cv::Vec3d rvec, cv::Vec3d tvec, cv::Mat image, int id, std::vector<cv::Point2f> corner);
@@ -50,6 +52,10 @@ private:
   void publishDebugImage(const std_msgs::Header& header, const cv::Mat& image);
   void getArucoPosesList(const XmlRpc::XmlRpcValue& aruco_poses_list);
 
+  void doneCallback(const actionlib::SimpleClientGoalState& state, const snailbot_msgs::ConnectedRelationResultConstPtr& result){}
+  void feedbackCallback(const snailbot_msgs::ConnectedRelationFeedbackConstPtr& feedback);
+
+  actionlib::SimpleActionClient<snailbot_msgs::ConnectedRelationAction> ac_;
   ros::Subscriber image_sub_;
   ros::Publisher aruco_debug_pub_, marker_pub_;
   tf2_ros::TransformBroadcaster br_;
@@ -60,6 +66,8 @@ private:
   tf2_ros::TransformListener tf_listener;
   std::map<int, std::vector<class WeightedAverageFilter2D>> marker_filters;
   std::unordered_map<int, geometry_msgs::TransformStamped> aruco_poses_list_{};
+  int robots_num_ = 0;
+  bool is_connecting_ = false;
 };
 
 // 加权平均滤波器

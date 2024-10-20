@@ -1,0 +1,10 @@
+# Goal
+uint8 robot_id
+uint8 robots_num
+---
+# Result
+bool success
+---
+# Feedback
+uint8 connecting_object_id
+

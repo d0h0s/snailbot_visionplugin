@@ -1,36 +1,35 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>aruco_pose_nodelet</name>
+  <name>robo_info_nodelet</name>
   <version>0.0.1</version>
-  <description>The pointcloud_fusion package</description>
+  <description>A nodelet for preprocessing images for Aruco marker detection</description>
 
   <maintainer email="xianghong@todo.todo">xianghong</maintainer>
-
   <license>BSD</license>
 
   <buildtool_depend>catkin</buildtool_depend>
 
-  <build_depend>snailbot_msgs</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>nodelet</build_depend>
   <build_depend>pluginlib</build_depend>
   <build_depend>sensor_msgs</build_depend>
+  <build_depend>image_transport</build_depend>
+  <build_depend>cv_bridge</build_depend>
+  <build_depend>snailbot_msgs</build_depend>
   <build_depend>tf2_ros</build_depend>
   <build_depend>tf2_geometry_msgs</build_depend>
-  <build_depend>geometry_msgs</build_depend>
-  <build_depend>tf2_sensor_msgs</build_depend>
+  <depend>dynamic_reconfigure</depend>
 
-  <exec_depend>snailbot_msgs</exec_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>nodelet</exec_depend>
   <exec_depend>pluginlib</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>image_transport</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>snailbot_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
-  <exec_depend>geometry_msgs</exec_depend>
-  <exec_depend>tf2_sensor_msgs</exec_depend>
-
   <export>
-    <nodelet plugin="${prefix}/aruco_pose_nodelet.xml"/>
+    <nodelet plugin="${prefix}/robo_info_nodelet.xml"/>
   </export>
 </package>

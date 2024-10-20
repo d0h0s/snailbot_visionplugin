@@ -1,0 +1,5 @@
+<library path="lib/librobo_info_nodelet">
+    <class name="robo_info/RoboInfoNodelet" type="robo_info::RoboInfoNodelet" base_class_type="nodelet::Nodelet">
+        <description>Aruco Image Preprocessing Nodelet</description>
+    </class>
+</library>

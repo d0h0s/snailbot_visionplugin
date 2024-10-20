@@ -5,7 +5,13 @@
 
 namespace aruco_pose
 {
-ArucoPoseNodelet::ArucoPoseNodelet() : tf_listener(tf_buffer_) {}
+ArucoPoseNodelet::ArucoPoseNodelet() : ac_("check_connection_action", true), tf_listener(tf_buffer_)
+{
+  if (!ac_.waitForServer(ros::Duration(10.0)))
+    ROS_ERROR("Action server not available after waiting for 10 seconds.");
+  else
+    ROS_INFO("Connected to action server.");
+}
 
 ArucoPoseNodelet::~ArucoPoseNodelet() {}
 
@@ -24,6 +30,7 @@ void ArucoPoseNodelet::onInit() {
   nh_private.param("real_marker_width", real_marker_width_, 16.0);
   nh_private.param("alpha", alpha_, 0.8);
   nh_private.param("robot_radius", robot_radius_, 60.0);
+  nh_private.param("robots_num", robots_num_, 3);
   image_sub_ = nh.subscribe(image_topic, 10, &ArucoPoseNodelet::imageCallback, this);
 
   // 发布带标记的图像和marker
@@ -45,7 +52,7 @@ void ArucoPoseNodelet::getArucoPosesList(const XmlRpc::XmlRpcValue& aruco_poses_
     pose.transform.rotation = tf2::toMsg(tf2::Quaternion(aruco_pose.second["rotation"][0], aruco_pose.second["rotation"][1], aruco_pose.second["rotation"][2], aruco_pose.second["rotation"][3]));
     pose.header.frame_id = robot_name_;
     pose.child_frame_id = "target_" + std::to_string(static_cast<int>(aruco_pose.second["id"]));
-    aruco_poses_list_.insert(std::make_pair(aruco_pose.second["id"], pose));
+    aruco_poses_list_.insert(std::make_pair(static_cast<int>(aruco_pose.second["id"]), pose));
   }
 }
 
@@ -296,11 +303,26 @@ void ArucoPoseNodelet::publishSphereSTL(const geometry_msgs::TransformStamped& s
   marker.scale.y = 0.001;
   marker.scale.z = 0.001;
 
+  size_t underscore_pos = robot_name_.find_last_of('_');
+  std::string number_str = robot_name_.substr(underscore_pos + 1);
+  int robot_id = std::stoi(number_str);
+  sendGoal(robot_id, robots_num_);
+  ROS_INFO_STREAM("is_connecting_: " << is_connecting_);
   // 设置颜色
-  marker.color.r = 1.0; // 红色
-  marker.color.g = 0.0;
-  marker.color.b = 0.0;
-  marker.color.a = 1.0; // 不透明
+  if (!is_connecting_)
+  {
+    marker.color.r = 1.0; // 红色
+    marker.color.g = 0.0;
+    marker.color.b = 0.0;
+    marker.color.a = 1.0; // 不透明
+  }
+  else
+  {
+    marker.color.r = 0.0; // 绿色
+    marker.color.g = 1.0;
+    marker.color.b = 0.0;
+    marker.color.a = 1.0; // 不透明
+  }
 
   // 设置STL文件路径
   marker.mesh_resource = "package://aruco_pose_nodelet/meshes/MODEL3.STL";
@@ -353,6 +375,24 @@ void ArucoPoseNodelet::drawImage(cv::Vec3d rvec, cv::Vec3d tvec, cv::Mat image, 
   cv::putText(image, std::to_string(id), corner[0], cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 2);
 }
 
-}  // namespace aruco_pose
+void ArucoPoseNodelet::sendGoal(int robot_id, int robots_num)
+{
+  snailbot_msgs::ConnectedRelationGoal goal;
+  goal.robot_id = robot_id;  // 设置机器人ID
+  goal.robots_num = robots_num;  // 设置机器人的总数
 
+  // 发送目标
+  ac_.sendGoal(goal,
+               boost::bind(&ArucoPoseNodelet::doneCallback, this, _1, _2),  // 使用boost::bind将成员函数作为回调
+               actionlib::SimpleActionClient<snailbot_msgs::ConnectedRelationAction>::SimpleActiveCallback(),
+               boost::bind(&ArucoPoseNodelet::feedbackCallback, this, _1));
+}
+
+void ArucoPoseNodelet::feedbackCallback(const snailbot_msgs::ConnectedRelationFeedbackConstPtr& feedback)
+{
+  ROS_INFO_STREAM(robot_name_ <<" Feedback received: " << static_cast<int>(feedback->connecting_object_id));
+  is_connecting_ = feedback->connecting_object_id != 255;
+}
+
+}  // namespace aruco_pose
 PLUGINLIB_EXPORT_CLASS(aruco_pose::ArucoPoseNodelet, nodelet::Nodelet)

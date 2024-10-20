@@ -1,5 +1,9 @@
 <launch>
     <node pkg="nodelet" type="nodelet" name="video_manager" args="manager" output="screen"/>
+    <node pkg="nodelet" type="nodelet" name="action_manager" args="manager" output="screen"/>
+
+    <node pkg="nodelet" type="nodelet" name="check_connection" args="load robo_info/RoboInfoNodelet /action_manager --no-bond" output="screen">
+    </node>
 
     <!-- Ô¤´¦Àí nodelet -->
     <node pkg="nodelet" type="nodelet" name="image_preprocessing" args="load aruco_image_preprocessing/ArucoImagePreprocessingNodelet /video_manager --no-bond" output="screen">
@@ -23,6 +27,7 @@
         <param name="real_marker_width" value="25.0"/>
         <param name="alpha" value="0.75"/>
         <param name="robot_radius" value="60.0"/>
+        <param name="robots_num" value="2"/>
     </node>
 
     <node pkg="nodelet" type="nodelet" name="aruco_detection_2"
@@ -33,6 +38,8 @@
         <param name="real_marker_width" value="25.0"/>
         <param name="alpha" value="0.75"/>
         <param name="robot_radius" value="60.0"/>
+        <param name="robots_num" value="2"/>
     </node>
+
 
 </launch>

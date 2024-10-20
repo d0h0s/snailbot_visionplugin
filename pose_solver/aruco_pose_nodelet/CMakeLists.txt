@@ -11,12 +11,14 @@ find_package(catkin REQUIRED COMPONENTS
         tf2_ros
         tf2_geometry_msgs
         geometry_msgs
+        snailbot_msgs
 )
 
 catkin_package(
         INCLUDE_DIRS include
         LIBRARIES aruco_pose_nodelet
         CATKIN_DEPENDS roscpp nodelet pluginlib sensor_msgs tf2_ros tf2_geometry_msgs tf2_sensor_msgs geometry_msgs
+        snailbot_msgs
 )
 
 include_directories(
@@ -26,6 +28,7 @@ include_directories(
 )
 
 add_library(aruco_pose_nodelet src/aruco_pose_nodelet.cpp)
+#add_dependencies(aruco_pose_nodelet snailbot_msgs_generate_messages_cpp)
 target_link_libraries(aruco_pose_nodelet
         ${catkin_LIBRARIES}
         ${OpenCV_LIBRARIES}
