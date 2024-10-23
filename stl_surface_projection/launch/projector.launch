@@ -1,0 +1,6 @@
+<launch>
+    <rosparam command="load" file="$(find stl_surface_projection)/config/test.yaml" />
+    <node name="stl_surface_projection_node" pkg="stl_surface_projection" type="stl_surface_projection_node" output="screen">
+        <param name="stl_file_path" value="package://aruco_pose_nodelet/meshes/MODEL3.STL"/>
+    </node>
+</launch>
